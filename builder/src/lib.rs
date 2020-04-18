@@ -36,14 +36,54 @@ pub fn derive(input: TokenStream) -> TokenStream {
     let name = input.ident;
     let builder_name = format_ident!("{}Builder", name);
 
+    let empty_builder_fields = named_fields.iter().map(|f| {
+        let field_name = &f.ident;
+
+        quote! {
+            #field_name: None
+        }
+    });
+
+    let empty_builder_body = quote! {
+        #builder_name {
+            #(
+                #empty_builder_fields,
+            )*
+        }
+    };
+
+    let builder_methods_list = named_fields.iter().map(|f| {
+        let field_name = &f.ident;
+        let ty = &f.ty;
+
+        quote! {
+            fn #field_name(&mut self, #field_name: #ty) -> &mut Self {
+                self.#field_name = Some(#field_name);
+                self
+            }
+        }
+    });
+
+    let builder_impl = quote! {
+        impl #builder_name {
+            #(
+                #builder_methods_list
+            )*
+        }
+    };
+
     let expanded = quote! {
         pub struct #builder_name {
             #quoted_fields
         }
 
         impl #name {
-            pub fn builder() {}
+            pub fn builder() -> #builder_name {
+                #empty_builder_body
+            }
         }
+
+        #builder_impl
     };
 
     proc_macro::TokenStream::from(expanded)
