@@ -2,7 +2,7 @@ extern crate proc_macro;
 
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, Data, DeriveInput, Fields};
+use syn::{parse_macro_input, Data, DeriveInput, Fields, GenericArgument, PathArguments, Type};
 
 #[proc_macro_derive(Builder)]
 pub fn derive(input: TokenStream) -> TokenStream {
@@ -20,7 +20,26 @@ pub fn derive(input: TokenStream) -> TokenStream {
 
     let quoted_field_list = named_fields.iter().map(|f| {
         let field_name = &f.ident;
-        let ty = &f.ty;
+
+        let segments = if let Type::Path(type_path) = &f.ty {
+            &type_path.path.segments
+        } else {
+            unimplemented!();
+        };
+
+        let ty = if segments[0].ident == "Option" {
+            if let PathArguments::AngleBracketed(args) = &segments[0].arguments {
+                if let GenericArgument::Type(ty) = &args.args[0] {
+                    ty
+                } else {
+                    unimplemented!()
+                }
+            } else {
+                unimplemented!()
+            }
+        } else {
+            &f.ty
+        };
 
         quote! {
             #field_name: Option<#ty>
@@ -54,7 +73,26 @@ pub fn derive(input: TokenStream) -> TokenStream {
 
     let builder_methods_list = named_fields.iter().map(|f| {
         let field_name = &f.ident;
-        let ty = &f.ty;
+
+        let segments = if let Type::Path(type_path) = &f.ty {
+            &type_path.path.segments
+        } else {
+            unimplemented!();
+        };
+
+        let ty = if segments[0].ident == "Option" {
+            if let PathArguments::AngleBracketed(args) = &segments[0].arguments {
+                if let GenericArgument::Type(ty) = &args.args[0] {
+                    ty
+                } else {
+                    unimplemented!()
+                }
+            } else {
+                unimplemented!()
+            }
+        } else {
+            &f.ty
+        };
 
         quote! {
             fn #field_name(&mut self, #field_name: #ty) -> &mut Self {
@@ -64,15 +102,74 @@ pub fn derive(input: TokenStream) -> TokenStream {
         }
     });
 
+    let builder_errors = named_fields.iter().map(|f| {
+        let field_name = &f.ident;
+
+        let first_segment = if let Type::Path(type_path) = &f.ty {
+            &type_path.path.segments[0].ident
+        } else {
+            unimplemented!();
+        };
+
+        if first_segment != "Option" {
+            quote! {
+
+                if self.#field_name.is_none() {
+                    return Err(String::from("#field_name is not set").into());
+                }
+            }
+        } else {
+            quote! {}
+        }
+    });
+
+    let new_struct_fields = named_fields.iter().map(|f| {
+        let field_name = &f.ident;
+
+        let segments = if let Type::Path(type_path) = &f.ty {
+            &type_path.path.segments
+        } else {
+            unimplemented!();
+        };
+
+        if segments[0].ident == "Option" {
+            quote! {
+                #field_name: self.#field_name.clone()
+            }
+        } else {
+            quote! {
+                #field_name: self.#field_name.clone().unwrap()
+            }
+        }
+    });
+
+    let new_struct = quote! {
+        #name {
+            #(
+                #new_struct_fields
+            ),*
+        }
+    };
+
     let builder_impl = quote! {
         impl #builder_name {
             #(
                 #builder_methods_list
             )*
+
+            pub fn build(&mut self) -> Result<#name, Box<dyn Error>> {
+                #(
+                    #builder_errors
+                )*
+
+                Ok(#new_struct)
+            }
         }
     };
 
     let expanded = quote! {
+        use std::error::Error;
+
         pub struct #builder_name {
             #quoted_fields
         }
