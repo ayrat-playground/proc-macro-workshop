@@ -2,9 +2,12 @@ extern crate proc_macro;
 
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, Data, DeriveInput, Fields, GenericArgument, PathArguments, Type};
+use syn::{
+    parse_macro_input, Data, DeriveInput, Fields, GenericArgument, Lit, Meta, NestedMeta,
+    PathArguments, Type,
+};
 
-#[proc_macro_derive(Builder)]
+#[proc_macro_derive(Builder, attributes(builder))]
 pub fn derive(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
@@ -94,10 +97,63 @@ pub fn derive(input: TokenStream) -> TokenStream {
             &f.ty
         };
 
-        quote! {
-            fn #field_name(&mut self, #field_name: #ty) -> &mut Self {
-                self.#field_name = Some(#field_name);
-                self
+        if let Some(attribute) = f.attrs.get(0) {
+            // if let PathArguments::Parenthesized(arguments) = attribute.path.segments[0].arguments {
+
+            // }
+            if let Ok(Meta::List(list)) = attribute.parse_meta() {
+                if let NestedMeta::Meta(Meta::NameValue(value)) = &list.nested[0] {
+                    let lit = &value.lit;
+
+                    if let Type::Path(path) = ty {
+                        if let PathArguments::AngleBracketed(args) =
+                            &path.path.segments[0].arguments
+                        {
+                            let actual_type = &args.args;
+
+                            let v_name = if let Lit::Str(name) = lit {
+                                name
+                            } else {
+                                unimplemented!()
+                            };
+
+                            // eprintln!("11 {}", quote! {#asdf});
+
+                            let res = quote! {
+                                fn #v_name(&mut self, #v_name: #actual_type) -> &mut Self {
+                                    match self.#field_name {
+                                        None => self.#field_name = Some(vec!(#v_name)),
+                                        Some(vec) =>  self.#field_name = Some(vec.push(#v_name))
+                                    };
+
+                                    self
+                                }
+                            };
+
+                            eprintln!("{}", res);
+
+                            res
+                        } else {
+                            unimplemented!()
+                        }
+                    } else {
+                        unimplemented!()
+                    }
+                // eprintln!("{}", quote! {#ty});
+
+                // quote! { #lit }
+                } else {
+                    unimplemented!()
+                }
+            } else {
+                unimplemented!()
+            }
+        } else {
+            quote! {
+                fn #field_name(&mut self, #field_name: #ty) -> &mut Self {
+                    self.#field_name = Some(#field_name);
+                    self
+                }
             }
         }
     });
