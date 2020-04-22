@@ -112,18 +112,22 @@ pub fn derive(input: TokenStream) -> TokenStream {
                             let actual_type = &args.args;
 
                             let v_name = if let Lit::Str(name) = lit {
-                                name
+                                format_ident!("{}", name.value())
                             } else {
                                 unimplemented!()
                             };
 
-                            // eprintln!("11 {}", quote! {#asdf});
+                            let foo = args.gt_token;
+
+                            eprintln!("11 {}", quote! {#foo});
 
                             let res = quote! {
                                 fn #v_name(&mut self, #v_name: #actual_type) -> &mut Self {
-                                    match self.#field_name {
-                                        None => self.#field_name = Some(vec!(#v_name)),
-                                        Some(vec) =>  self.#field_name = Some(vec.push(#v_name))
+                                    match &self.#field_name {
+                                        None => self.#field_name = Some(vec![#v_name]),
+                                        Some(vec) => {
+                                            vec.push(#v_name);
+                                        }
                                     };
 
                                     self
@@ -222,6 +226,8 @@ pub fn derive(input: TokenStream) -> TokenStream {
             }
         }
     };
+
+    eprintln!("{}", builder_impl);
 
     let expanded = quote! {
         use std::error::Error;
